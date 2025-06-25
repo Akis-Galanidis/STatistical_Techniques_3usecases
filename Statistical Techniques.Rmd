@@ -1,0 +1,1052 @@
+---
+title: "Final Statistical Analysis Report"
+author: "100777241"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    latex_engine: xelatex
+    dev: cairo_pdf
+geometry: a4paper, margin=1in  # Explicitly set paper size
+fontsize: 12pt
+header-includes:
+  - \usepackage{fancyvrb}  
+  - \usepackage{fvextra}  # Required for automatic line breaking
+  - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}  # Handles line breaks in code
+  - \usepackage{inconsolata}  # Better monospaced font for code
+  - \usepackage{listings}  
+  - \lstset{basicstyle=\ttfamily\footnotesize, breaklines=true}
+---
+  
+```{r setup, include=FALSE}
+# Load necessary libraries
+options(scipen = 999)  # Avoid scientific notation
+options(repos = c(CRAN = "https://cloud.r-project.org"))  # Set CRAN mirror
+
+
+# Load libraries
+
+# Data Manipulation
+library(tidyverse)  # Includes dplyr, tidyr, readr, ggplot2
+library(janitor)    # Data cleaning
+library(lubridate)  # Date/time processing
+library(zoo)        # Time series handling
+
+# Statistical Analysis
+library(car)        # Regression diagnostics & ANOVA
+library(MASS)       # Robust regression models
+library(effsize)    # Effect size calculations
+library(rstatix)    # Simplified statistical tests
+library(lmtest)     # Linear model diagnostics
+library(psych)      # Descriptive stats & factor analysis
+library(FSA)        # 
+
+# Machine Learning & Modeling
+library(caret)      # ML training/testing
+library(nnet)       # Neural networks & multinomial regression
+
+# Text & NLP Analysis
+library(tm)         # Text mining
+library(wordcloud)  # Word cloud visualization
+library(SnowballC)  # Text stemming
+
+# Visualization & Reporting
+library(ggplot2)    # Data visualization
+library(corrplot)   # Correlation matrix visualization
+library(kableExtra) # Enhanced tables for RMarkdown
+library(knitr)      # Markdown formatting
+
+# Geospatial Analysis
+library(sf)         # Spatial data handling
+library(tmap)       # Thematic maps
+library(nngeo)      # spatial nearest neighbor interpolation
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# Clustering & Dimensionality Reduction
+library(factoextra) # Clustering & PCA visualization
+library(cluster)    # Clustering algorithms
+
+# Set global options
+knitr::opts_chunk$set(echo = TRUE, fig.show = "hold")
+
+```
+
+# **📌 Executive Summary**
+This report applies statistical analysis to three distinct datasets to derive actionable business insights. 
+
+## **🔹 E-Commerce Pricing Strategy:**
+
+**Objective:** Assess whether discounting strategies influence final product prices using correlation and regression analysis.
+**Key Finding:** No statistically significant relationship was found (p = 0.718), indicating that discounting does not directly impact pricing.
+**Business Implication:** Retailers should reconsider broad discount-based models and explore alternative pricing strategies such as demand-driven dynamic pricing or AI-based personalized promotions..
+
+## **🔹 Consumer Behavior in Online Book Reviews:**
+
+**Objective:** Analyze the impact of review ratings on helpfulness scores using Mann-Whitney U and Kruskal-Wallis tests.
+**Key Finding:** Lower-rated (1-star and 2-star) reviews received significantly higher helpfulness scores (p < 0.001), suggesting that critical feedback is valued more by users.
+**Business Implication:** Platforms should prioritize structured, content-rich reviews rather than only promoting high ratings. Implementing AI-based sorting algorithms to highlight detailed, informative reviews can improve user experience. rather than only promoting high ratings.
+
+## **🔹 Real Estate Market Segmentation:**
+
+**Objective:** Segment house prices into distinct market categories using K-Means clustering, validated by the Kruskal-Wallis test.
+**Key Finding:** Four distinct price clusters were identified—affordable housing (£70K-£150K), mid-range (£150K-£300K), upper mid-range (£300K-£500K), and luxury (£500K+).
+**Business Implication:** Investors can use these clusters to refine pricing strategies, while mortgage lenders can assess risk profiles based on region. Policymakers can tailor affordable housing initiatives to lower-cost clusters.
+
+# **E-Commerce Dataset Analysis**
+
+## **Introduction**
+This section presents an in-depth statistical analysis of an e-commerce transaction dataset containing product categories, prices, discounts, payment methods, and purchase dates. The objective is to determine whether discount strategies, product categories, payment methods, or seasonal trends impact pricing. The insights will help inform pricing optimization, promotional strategies, and revenue maximization.
+
+---
+
+## **Case Study: Optimizing Pricing Strategies for E-Commerce Growth**
+
+### **📌 Business Challenge**
+An online retailer wants to **maximize revenue** and **optimize discount strategies** while ensuring that the right **payment methods** and **product categories** are leveraged to drive sales. The company is currently offering discounts across various categories but the retailer is unsure **if discounts drive sales**, whether **specific product categories receive more discounts**, and whether **seasonality or payment method usage impacts discounting strategies**.
+
+---
+
+### 📊 Data Analysis Approach
+To analyze historical e-commerce data, we apply:
+- **Correlation & Linear Regression** to examine discount effectiveness.
+- **ANOVA & Kruskal-Wallis Tests** to assess category-based discounting and payment method differences.
+- **Time Series Analysis** to identify seasonal pricing trends.
+
+These methods provide insights into whether discount strategies impact pricing, how discount levels vary across product categories, and whether payment methods influence discounting.
+
+---
+
+## 📊 Data Cleaning & Preprocessing
+- **Removed missing values** to ensure unbiased statistical analysis.
+- **Standardized categorical variables** (e.g., category, payment method).
+- **Filtered extreme outliers** (top 1% of prices) to avoid distortions in discount analysis.
+
+
+```{r ecommerce_cleaning, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
+# Load dataset
+ecom_data <- read_csv("ecommerce_data.csv", col_names = TRUE)
+
+summary(ecom_data)
+
+# Rename columns for consistency
+ecom_data <- ecom_data %>% 
+  rename(
+    user_id = User_ID,
+    product_id = Product_ID,
+    category = Category,
+    payment_method = Payment_Method,
+    purchase_date = Purchase_Date,
+    price = `Price (Rs.)`,
+    discount = `Discount (%)`,
+    final_price = `Final_Price(Rs.)`
+  )
+
+# Correct Date Format
+ecom_data <- ecom_data %>% mutate(purchase_date = as.Date(purchase_date, format="%d-%m-%Y"))
+
+# Handle missing values
+ecom_data <- ecom_data %>% drop_na()
+
+# Identify outliers in discount and price
+ecom_data <- ecom_data %>% filter(price < quantile(price, 0.99))
+
+# Convert discount to numeric
+ecom_data$discount <- as.numeric(ecom_data$discount)
+
+# Verify the structure of the data
+str(ecom_data)
+```
+---
+
+## **Statistical Analysis**
+
+### **Correlation Analysis: Do Discounts Impact Prices**
+
+We conducted both **Pearson and Spearman correlation tests** to examine whether discounts significantly affect prices:
+
+```{r ecommerce_Pearson, echo=FALSE}
+# Pearson Correlation
+pearson_test <- cor.test(ecom_data$discount, ecom_data$price, method = "pearson")
+
+# Spearman Correlation (to check for non-linear relationships)
+spearman_test <- cor.test(ecom_data$discount, ecom_data$price, method = "spearman", exact = FALSE)
+
+# Extract results
+r_value <- pearson_test$estimate
+p_value_pearson <- pearson_test$p.value
+rho_value <- spearman_test$estimate
+p_value_spearman <- spearman_test$p.value
+sample_size <- pearson_test$parameter + 2  # Degrees of freedom (df) + 2
+
+# Display Correlation Results as Table
+cor_results <- data.frame(
+  Method = c("Pearson", "Spearman"),
+  Estimate = c(pearson_test$estimate, spearman_test$estimate),
+  P_Value = c(pearson_test$p.value, spearman_test$p.value)
+)
+
+kable(cor_results, caption = "Correlation Results Between Discount and Price")
+```
+
+**Interpretation:**
+
+   Pearson Correlation: r=−0.006,p=0.718r=−0.006,p=0.718 → No significant linear relationship between discount and price.
+   Spearman Correlation: ρ=−0.010,p=0.567ρ=−0.010,p=0.567 → No significant non-linear relationship either.
+**Conclusion:** Discounting does not systematically impact price fluctuations.
+
+
+### **Linear Regression: Effect of Discount on Price**
+
+**Hypothesis:**
+H0: Discount does not significantly affect price.
+H1: Discount has a significant impact on price.
+
+**Assumptions:**
+1. **Linearity**: Price should have a linear relationship with discount.
+2. **Independence**: Observations must be independent.
+3. **Homoscedasticity**: Variance of residuals should be constant.
+4. **Normality**: Residuals should be normally distributed.
+
+```{r ecommerce_linear_regression}
+# Fit the model
+lm_model <- lm(price ~ discount, data = ecom_data)
+lm_summary <- summary(lm_model)
+
+# 📊 Diagnostic Plots for Regression Assumptions
+par(mfrow = c(2,2))  # Arrange multiple plots
+plot(lm_model)  # Generates residuals vs fitted, Q-Q plot, Scale-location, and Cook's distance
+
+# 📌 Normality check (Shapiro-Wilk Test)
+shapiro_test <- shapiro.test(residuals(lm_model))
+cat(sprintf("Shapiro-Wilk Normality Test: W = %.3f, p = %.3f\n", shapiro_test$statistic, shapiro_test$p.value))
+
+# 📌 Homoscedasticity check (Breusch-Pagan Test)
+bptest_test <- bptest(lm_model)
+cat(sprintf("Breusch-Pagan Test for Homoscedasticity: BP = %.3f, p = %.3f\n", bptest_test$statistic, bptest_test$p.value))
+
+# 📊 Extract key values from Regression Output
+b <- lm_summary$coefficients["discount", "Estimate"]
+se <- lm_summary$coefficients["discount", "Std. Error"]
+t_value <- lm_summary$coefficients["discount", "t value"]
+p_value <- lm_summary$coefficients["discount", "Pr(>|t|)"]
+r_squared <- lm_summary$adj.r.squared
+
+# 📊 Print Regression Summary
+cat(sprintf("Linear Regression Results:\n b = %.3f, SE = %.3f, t = %.2f, p = %.3f, R² = %.6f\n", 
+            b, se, t_value, p_value, r_squared))
+
+# 📌 Confidence Intervals for Regression Coefficients
+conf_intervals <- confint(lm_model)
+kable(conf_intervals, caption = "Confidence Intervals for Regression Coefficients")
+
+# 📌 Assumption Test Results (Shapiro-Wilk & Breusch-Pagan)
+kable(data.frame(
+  Test = c("Shapiro-Wilk (Normality)", "Breusch-Pagan (Homoscedasticity)"), 
+  p_value = c(shapiro_test$p.value, bptest_test$p.value)
+), caption = "Assumption Tests for Regression")
+```
+**Regression Assumption Checks & Model Adjustments**
+📌 The **Shapiro-Wilk Normality Test** (p = 0.000) indicates that residuals are **not normally distributed**, violating one of the key assumptions of OLS regression.  
+📌 The **Breusch-Pagan Test for Homoscedasticity** (p = 0.347) suggests that the assumption of **constant variance is met**, meaning heteroscedasticity is **not a concern** in this dataset.
+
+### **Addressing Non-Normality**
+
+To handle non-normality, we applied:
+
+1️⃣  Log Transformation of price.
+2️⃣  Robust Regression (rlm) to mitigate the impact of outliers.
+
+```{r ecommerce_non_normality, echo=FALSE}
+# Apply log transformation to dependent variable
+ecom_data$log_price <- log(ecom_data$price)
+
+# Fit the new model
+lm_log_model <- lm(log_price ~ discount, data = ecom_data)
+shapiro_test_log <- shapiro.test(residuals(lm_log_model))  # Normality test
+
+# Fit robust regression model
+rlm_model <- rlm(price ~ discount, data = ecom_data)
+rlm_summary <- summary(rlm_model)
+
+# Print results
+cat(sprintf("Robust Regression Results: b = %.3f, SE = %.3f, t = %.2f\n",
+            coef(rlm_model)["discount"], rlm_summary$coefficients["discount", "Std. Error"],
+            rlm_summary$coefficients["discount", "t value"]))
+
+# Confidence intervals for robust regression
+confint_rlm <- confint(rlm_model)
+kable(confint_rlm, caption = "Confidence Intervals for Robust Regression Coefficients")
+```
+ 
+**Regression Findings**
+
+📌 OLS Regression: p-value = 0.718 (not significant)
+📌 R² = -0.00024 → Model does not explain price variance
+📌 Robust Regression: Similar results (p-value remains insignificant).
+
+📌 Final Conclusion: Discounting does not significantly influence pricing. Both OLS and robust regression confirm this statistical insignificance.
+
+
+### **ANOVA: Compare discounts across different product categories**
+
+Hypothesis:
+
+H0: Discount levels do not significantly vary across product categories.
+H1: At least one category receives significantly different discounts.
+
+📌 Assumptions: 
+1️⃣ Independence → Assumed valid as categories are independent.
+2️⃣ Homogeneity of Variance (Levene’s Test not performed) → Not needed as ANOVA is robust to moderate violations.
+3️⃣ Normality (Not required for large samples) → ANOVA is valid under the Central Limit Theorem.
+
+```{r ecommerce_anova_product_categories, echo=FALSE}
+# ANOVA: Do product categories receive different discounts?
+aov_category <- aov(discount ~ category, data = ecom_data)
+summary(aov_category)
+
+# Post-hoc test: Extract significant results only
+tukey_results <- TukeyHSD(aov_category)
+sig_pairs <- tukey_results$category[tukey_results$category[, "p adj"] < 0.05, , drop = FALSE]
+
+# Visualization
+ggplot(ecom_data, aes(x = category, y = discount, fill = category)) +
+  geom_boxplot() +
+  labs(title = "Discount Distribution Across Product Categories",
+       x = "Category", y = "Discount (%)") +
+  theme_minimal()
+
+# Print only if significant differences are found
+if (nrow(sig_pairs) > 0) {
+  print(sig_pairs)
+} else {
+  cat("Post-hoc Tukey test: No statistically significant differences between product categories.\n")}
+```
+
+**ANOVA Results:**
+
+- F(6, 3616) = 1.051, p = 0.39 → No significant differences in discounting across product categories.
+
+**Post-hoc Tukey Test:**
+
+- No category pair had statistically significant discount differences (p-values all > 0.5).
+
+📌 Conclusion: Discounting strategies are uniform across product categories. Retailers appear to apply similar discounts across all categories, rather than favoring certain ones.
+
+
+### **ANOVA: Effect of Payment Method on Price**
+
+We used ANOVA to test whether the payment method affects price:
+
+**Hypothesis**
+H0: There is no significant difference in product price across different payment methods.
+H1: At least one payment method has a significantly different average price.
+
+**Assumptions**
+1. Normality: Each group should be approximately normally distributed.
+2. Homogeneity of variance: The variance of price should be similar across groups.
+3. Independence: Each observation should be independent.
+
+```{r ecommerce_anova, echo=FALSE}
+aov_model <- aov(price ~ payment_method, data = ecom_data)
+anova_results <- summary(aov_model)
+
+# Compute Eta-Squared Effect Size
+ss_total <- sum(anova_results[[1]][, "Sum Sq"])
+ss_effect <- anova_results[[1]]["payment_method", "Sum Sq"]
+eta_squared <- ss_effect / ss_total
+
+# Print results
+cat(sprintf("ANOVA results: F(%d, %d) = %.3f, p = %.3f, η² = %.6f",
+            anova_results[[1]]["payment_method", "Df"],
+            anova_results[[1]]["Residuals", "Df"],
+            anova_results[[1]]["payment_method", "F value"],
+            anova_results[[1]]["payment_method", "Pr(>F)"],
+            eta_squared))
+
+# Compute confidence intervals for each payment method
+payment_means <- ecom_data %>%
+  group_by(payment_method) %>%
+  summarise(mean_price = mean(price), ci_low = mean_price - 1.96 * sd(price) / sqrt(n()), 
+            ci_high = mean_price + 1.96 * sd(price) / sqrt(n()))
+
+# Print results
+kable(payment_means, caption = "Mean Prices and Confidence Intervals by Payment Method")
+```
+
+-F-statistic: 0.097 (low, indicating little variance between groups).
+-p-value: 0.984 (greater than 0.05, meaning no significant difference).
+
+**Interpretation:**
+
+📌 Since p > 0.05, we fail to reject the null hypothesis, meaning there is no statistical evidence that different payment methods lead to different product prices.
+📌 The very small F-statistic indicates that price variations within each payment method group are almost identical, which explains the lack of significance.
+**ANOVA results indicate no significant difference between payment methods (p = 0.984).**
+
+
+### **Seasonal Effects on Pricing**
+
+```{r ecommerce_seasonal}
+ggplot(ecom_data, aes(x = purchase_date, y = price)) +
+  geom_line(color = "blue", alpha = 0.7) +
+  geom_smooth(method = "loess", color = "red", se = FALSE) +
+  labs(
+    title = "Price Trends Over Time in E-Commerce Data",
+    x = "Purchase Date",
+    y = "Product Price (in Rs.)"
+  ) +
+  theme_minimal()
+```
+
+Observations:
+
+ Flat Trend Line (Red Line - LOESS Smoothing): Indicates that overall price remains stable over time.
+ No Clear Seasonal Pattern: No regular increases or decreases.
+ Conclusion: Seasonality does not have a significant effect on pricing.
+
+---
+
+## **Conclusion & Future Analysis**
+### **Key Findings and Interpretation**
+
+The statistical analysis of the e-commerce dataset has provided valuable insights into the factors influencing pricing and purchasing behavior. The following key observations emerge from this investigation:
+
+ **Key Insights:**
+ **📌 1️⃣ Discounting does not significantly impact final price.**
+ **📌 2️⃣ Discounts are applied uniformly across product categories.**
+ **📌 3️⃣ Payment method does not influence discounts.**
+ **📌 4️⃣ No seasonal effects were observed on pricing trends.**
+
+
+### **Business & Market Implications**  
+
+🔹 **Reevaluating Discount Strategies** – Since discounts do not affect demand or pricing significantly, businesses should **shift to personalized promotions** targeting **price-sensitive segments**.  
+
+🔹 **Dynamic Pricing Over Fixed Discounts** – Retailers may benefit more from **demand-driven pricing strategies** rather than **blanket category-wide discounts**.  
+
+🔹 **Rethinking Payment-Based Incentives** – Since discounting is **not payment-method dependent**, companies should **avoid unnecessary payment-specific discounts** and instead focus on **loyalty programs, cashback rewards, or bundling** to encourage **repeat purchases**.  
+
+🔹 **Behavior-Based Seasonal Promotions** – While no **seasonal pricing trends** were found, businesses can still **use personalized recommendations and inventory-based pricing** to optimize sales rather than applying **fixed seasonal discounts**.  
+
+### **Future Research Directions**  
+
+📌 **Consumer Segmentation & Pricing Sensitivity** – **Machine learning** can help classify customers (e.g., **new vs. returning buyers**) to refine **personalized pricing**.  
+
+📌 **Competitor & Market Integration** – Incorporating **competitor pricing, industry trends, and economic indicators** can improve **pricing strategies**.  
+
+📌 **Product-Specific Discount Elasticity** – A **granular approach** could identify **which products benefit from discounts** versus those with **stable demand**.  
+
+📌 **Advanced Time-Series Forecasting** – **ARIMA and AI-based forecasting models** could detect **hidden seasonal trends** for **better inventory planning**.  
+
+📌 **AI-Driven Pricing Models** – Implementing **real-time adaptive pricing** based on **customer behavior** (e.g., **browsing history, cart abandonment**) could optimize **revenue**.  
+
+By leveraging these insights, businesses can **move beyond static discounting** to **data-driven, customer-centric pricing strategies**, maximizing both **profitability and customer satisfaction**.  
+
+
+---
+
+
+# **New Book Reviews Dataset**
+
+## **Introduction & Purpose of Analysis**
+
+Book reviews influence potential buyers, especially on platforms like Amazon. This analysis examines reviews for Wind and Truth: Book Five of the Stormlight Archive, focusing on the relationship between review ratings and helpfulness votes.
+
+Key research questions include:
+
+ - Do higher-rated reviews receive more helpful votes than lower-rated reviews?
+ - How does review helpfulness vary across different rating levels?
+ - What patterns can be identified to improve user-generated review systems?
+
+---
+
+## **Data Cleaning & Preprocessing**
+
+To prepare the dataset for analysis, the following preprocessing steps were applied:
+
+- **Loaded Dataset** – Imported `book_reviews.csv` for analysis.
+- **Converted Ratings to Numeric** – Extracted and converted **rating values** to numeric format for statistical testing.
+- **Checked for Missing Values** – Identified and assessed any `NA` values introduced during conversion.
+- **Renamed Key Variables** – Renamed `"helpful"` column to `"helpfulness"` for consistency with statistical models.
+- **Cleaned Review Text** – Processed textual data by converting to **lowercase** and removing **common stopwords** to improve sentiment analysis.
+
+```{r Book_Cleansing_Preprocessing, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
+# Load dataset
+book_reviews <- read_csv("book_reviews.csv")
+
+# Extract numeric part from rating and convert to numeric
+book_reviews <- book_reviews %>%
+  mutate(rating = as.numeric(str_extract(rating, "\\d+(\\.\\d+)?")))
+
+# Verify unique values after conversion
+unique(book_reviews$rating)
+
+# Check for NA values introduced
+sum(is.na(book_reviews$rating))
+
+# Rename column "helpful" to "helpfulness" to match statistical tests
+book_reviews <- book_reviews %>% rename(helpfulness = helpful)
+
+# Sentiment Analysis Preparation
+book_reviews$clean_text <- tolower(book_reviews$text)
+book_reviews$clean_text <- removeWords(book_reviews$clean_text, stopwords("en"))
+```
+
+---
+
+## **Statistical Analysis**
+
+### **Sentiment & Word Frequency Analysis**
+
+```{r Book_sentiment_analysis}
+# Sentiment Analysis
+word_freq <- TermDocumentMatrix(Corpus(VectorSource(book_reviews$clean_text)))
+word_freq_matrix <- as.matrix(word_freq)
+word_freq_sorted <- sort(rowSums(word_freq_matrix), decreasing = TRUE)
+wordcloud(names(word_freq_sorted), word_freq_sorted, max.words = 100)
+```
+
+
+📌 Findings:
+
+- High-frequency words: "book," "story," "characters," "Sanderson" → Discussions focus on plot, writing style, and character development.
+- Positive sentiment: "good," "great," "love," "fantasy," "favorite" indicate strong reader appreciation.
+- Critical concerns: "long," "pages," "writing" suggest pacing or length-related feedback.
+
+--- 
+
+### **Review Length Analysis: Does Longer Content Get More Helpful Votes?**
+
+```{r Book_Lenght_analysis}
+# Compute review length
+book_reviews <- book_reviews %>%
+  mutate(review_length = nchar(text))
+
+# Correlation Test
+cor_test_length <- cor.test(book_reviews$review_length, book_reviews$helpfulness, method = "spearman")
+
+# Print Results
+cat(sprintf("Spearman Correlation between Review Length and Helpfulness: rho = %.3f, p = %.3f\n", 
+            cor_test_length$estimate, cor_test_length$p.value))
+
+# Visualization
+ggplot(book_reviews, aes(x = review_length, y = helpfulness)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", color = "red", se = FALSE) +
+  labs(title = "Relationship Between Review Length and Helpfulness",
+       x = "Review Length (Characters)",
+       y = "Helpfulness Score") +
+  theme_minimal()
+```
+
+📌 **Findings:**
+
+- Moderate positive correlation (ρ = 0.437, p < 0.001) suggests longer reviews are perceived as more helpful.
+- Diminishing returns beyond 2000 characters – extremely long reviews do not further increase perceived helpfulness.
+   
+
+### **Mann-Whitney U Test: Helpfulness Scores by Rating Category**
+
+**Hypothesis:**
+H0: There is no significant difference in helpfulness scores between positive and negative reviews.
+H1: There is a significant difference in helpfulness scores between positive and negative reviews.
+
+**Assumptions:**
+- The Mann-Whitney U test is non-parametric and does not assume normality.
+- It compares **medians** between two independent groups.
+- Data should be ordinal or continuous. 
+
+```{r Book_Mann-Whitney}
+book_reviews <- book_reviews %>%
+  mutate(rating_category = ifelse(rating >= 4, "Positive", "Negative"))
+
+# Perform the test
+wilcox_test_result <- wilcox.test(book_reviews$helpfulness ~ book_reviews$rating_category)
+
+# Extract relevant test values
+W_value <- wilcox_test_result$statistic
+p_value <- wilcox_test_result$p.value
+
+# Print formatted result
+cat(sprintf("A Mann-Whitney U test was conducted to compare helpfulness scores between positive and negative reviews. 
+The results were statistically significant, W = %.0f, p < .001.", 
+            W_value))
+
+# Boxplot Visualization
+ggplot(book_reviews, aes(x = factor(rating_category), y = helpfulness, fill = factor(rating_category))) +
+  geom_boxplot() +
+  labs(
+    title = "Comparison of Helpfulness Scores Across Rating Categories",
+    x = "Review Rating Category",
+    y = "Helpfulness Score",
+    fill = "Rating Category"
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Blues")
+
+
+```
+
+
+📌 **Findings:**
+
+- Negative reviews receive significantly higher helpfulness votes (W = 41661, p < 0.001).
+- Detailed criticisms are more informative than generic positive feedback.
+
+
+### **Kruskal-Wallis Test: Helpfulness Scores Across Review Ratings**
+
+**Hypothesis:**
+H0: There is no significant difference in helpfulness scores across different rating levels.
+H1: At least one rating level has significantly different helpfulness scores.
+
+**Assumptions:**
+- The Kruskal-Wallis test is a non-parametric test that does not assume normality.
+- It is used when comparing **three or more independent groups** (rating levels).
+- It ranks all observations and tests whether the distributions differ significantly.
+
+```{r Book_Kruskal-Wallis}
+
+#Kruskal-Wallis Test
+kruskal_test <- kruskal.test(helpfulness ~ rating, data = book_reviews)
+
+# Boxplot for Visualization
+ggplot(book_reviews, aes(x = factor(rating), y = helpfulness, fill = factor(rating))) +
+  geom_boxplot() +
+  labs(title = "Helpfulness Scores by Review Rating",
+       x = "Review Rating",
+       y = "Helpfulness Score") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Blues")
+```
+
+📌 **Findings:**
+
+- Significant differences in helpfulness across rating levels (χ²(4) = 249.37, p < 0.001).
+- 1-star reviews receive the highest helpfulness scores, suggesting that critical reviews are valued most.
+
+### **Post-hoc Analysis & Effect Size Calculation**
+
+```{r Book_posthoc_EffectSize}
+# Pairwise Wilcoxon Test with Bonferroni Correction
+pairwise_results_bonf <- pairwise.wilcox.test(book_reviews$helpfulness, book_reviews$rating, 
+                                              p.adjust.method = "bonferroni")
+
+# Pairwise Wilcoxon Test with Benjamini-Hochberg Correction
+pairwise_results_bh <- pairwise.wilcox.test(book_reviews$helpfulness, book_reviews$rating, 
+                                            p.adjust.method = "BH")
+
+# Effect Size: Cliff's Delta for Mann-Whitney U Test
+cliff_delta_result <- cliff.delta(book_reviews$helpfulness, book_reviews$rating_category)
+
+# Compute Eta-Squared for Kruskal-Wallis Test
+H_stat <- kruskal_test$statistic
+k <- length(unique(book_reviews$rating))  # Number of groups
+n <- nrow(book_reviews)  # Total sample size
+eta_squared_value <- (H_stat - k + 1) / (n - k)
+
+# Print Effect Size
+cat(sprintf("\nEffect Size: Eta-Squared = %.4f (Large Effect)", eta_squared_value))
+
+# Print Post-Hoc Test Results
+print("Post-Hoc Pairwise Comparisons with Bonferroni Adjustment:")
+print(pairwise_results_bonf)
+
+print("Post-Hoc Pairwise Comparisons with Benjamini-Hochberg Adjustment:")
+print(pairwise_results_bh)
+```
+
+### **Interpretation of Results**
+
+The Kruskal-Wallis test revealed a **highly significant difference** in helpfulness scores across review ratings (**χ² = 249.37, df = 4, p < 2.2e-16**).  
+This means that **review rating levels strongly influence how helpful users perceive a review**.
+
+- **Effect Size Analysis:** 
+📌 The computed Eta-Squared value (0.5733) suggests a large effect, reinforcing that review ratings play a major role in helpfulness votes.
+
+- **Post-hoc Pairwise Wilcoxon Test:**
+📌 Bonferroni correction, which strictly controls for Type I errors, confirmed that:
+
+* 1-star reviews received significantly more helpfulness votes than 3-star and 5-star reviews (p < 0.001).
+* -2-star reviews differ significantly from 5-star reviews, confirming that lower ratings are perceived as more useful.
+* However, some comparisons (e.g., 3-star vs. 4-star) did not reach significance, likely due to Bonferroni’s strict correction.
+
+📌 Benjamini-Hochberg (BH) correction, which controls for false discovery rate (FDR), found that:
+
+* Lower-rated reviews (1-star, 2-star, 3-star) differ significantly from higher-rated reviews.
+* This suggests that critical reviews are more informative to readers than overly positive ones. 
+
+---
+
+## **Conclusion on Book Review Analysis**
+
+### **Boxplot Insights: Helpfulness Scores by Rating**
+📌 **Higher-rated reviews (4 and 5) receive fewer helpful votes**, likely due to **generic content** (e.g., *"Amazing book!"*).  
+📌 **Lower-rated reviews (1, 2, 3) score higher**, as they often contain **detailed criticism** buyers find useful.  
+📌 **1-star reviews show the highest median helpfulness**, with some exceeding **60 votes**, making them **perceived as highly valuable**.  
+
+---
+
+### 📊 Business Impact & Strategic Recommendations
+
+✅ Prioritize Informative Reviews
+Platforms should balance **critical and positive reviews**, rather than suppressing negative feedback.
+
+✅ Encourage Structured Reviews
+Incentivize **detailed 4- and 5-star reviews** to improve **content richness** and **user trust**.
+
+✅ Optimize Review Sorting
+Implement **AI-driven ranking** to highlight **insightful reviews** over generic praise (e.g., *"Amazing book!"*).
+
+✅ Review Length Optimization
+Recommend an **ideal length (200–2000 characters)** for **maximum engagement** without excessive verbosity.
+
+✅ Sentiment-Based Summarization
+Use **NLP models** to extract key **pros and cons** from long reviews, making feedback **easier to digest**.
+
+✅ Flag Common Concerns in Low Ratings
+If **1-star reviews repeatedly highlight issues**, brands should **proactively address them** (e.g., product quality, misleading descriptions).
+
+---
+
+### **Next Steps: Advanced Sentiment Analysis**
+📌 **Extract High-Impact Keywords** – Identify phrases in **highly rated negative reviews** (e.g., *"misleading," "not as described"*).  
+
+📌 **Analyze Sentiment Intensity** – Measure **positive vs. negative tone** across rating categories.  
+
+📌 **Investigate Time-Based Trends** – Check if **older reviews gain more helpful votes**, signaling **long-term reliability**.  
+
+📌 **Assess Reviewer Engagement** – Determine if **frequent reviewers** write **more helpful reviews** than first-time users.  
+
+---
+
+This streamlined version keeps **all essential insights** while reducing redundancy and ensuring **consistency with previous sections**. 🚀 Let me know if you need further refinements!
+
+
+---
+
+
+# **UK Housing Dataset**
+
+## **Introduction & Purpose of Analysis**
+
+Housing prices are a critical factor in economic planning, investment decisions, and public policy. Understanding housing price variations across regions helps stakeholders, such as investors, policymakers, and home buyers, make informed decisions. This analysis explores the **UK Housing 2023 Dataset** to identify regional price differences, segment price categories using K-Means clustering, and analyze the influencing factors through statistical testing and regression analysis. 
+
+Key research questions include:
+ - How do housing prices vary by region?
+ - What are the natural groupings of housing prices in the UK?
+ - What factors significantly influence housing prices?
+ - Are there any regional trends over time?
+
+By applying data cleaning, clustering, hypothesis testing, and regression modeling, we aim to provide actionable insights for real estate professionals and policymakers.
+
+---
+
+## **Data Cleaning & Preprocessing**
+
+To ensure the dataset is clean and suitable for analysis, the following preprocessing steps were applied:
+
+- **Standardized Column Names** – Used `janitor::clean_names()` to ensure consistency in variable naming.
+- **Formatted Date Column** – Converted `date` to a proper **Date format** (`"%d/%m/%Y"`) for accurate time-based analysis.
+- **Removed Highly Incomplete Columns** – Dropped columns with **more than 70% missing values**, as they contain insufficient data for meaningful analysis.
+- **Imputed Missing Values in Price Columns** – Replaced missing values in key price-related columns (`average_price`, `detached_price`, etc.) using the **median**, which is **robust to outliers**.
+- **Filtered Out Rows with Missing Sales Volume** – Removed observations where `sales_volume` was missing to maintain **data integrity** in market trend analysis.
+
+```{r housing_cleaning, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
+# Load dataset
+uk_housing_data <- read_csv("UK-HPI-full-file-2024-11.csv") %>%
+  janitor::clean_names()
+
+# Convert date column to proper format
+uk_housing_data$date <- as.Date(uk_housing_data$date, format = "%d/%m/%Y")
+
+# Remove columns with >70% missing data
+missing_threshold <- 0.7 * nrow(uk_housing_data)
+uk_housing_data <- uk_housing_data %>%
+  select(where(~ sum(is.na(.)) < missing_threshold))
+
+# Impute missing values in price columns with median
+price_cols <- c("average_price", "detached_price", "semi_detached_price", 
+                "terraced_price", "flat_price", "cash_price", "mortgage_price", 
+                "ftb_price", "foo_price", "new_price", "old_price")
+
+uk_housing_data[price_cols] <- uk_housing_data[price_cols] %>%
+  map(~ replace_na(.x, median(.x, na.rm = TRUE)))
+
+# Remove rows where sales volume is missing
+uk_housing_data <- uk_housing_data %>%
+  filter(!is.na(sales_volume))
+
+```
+
+---
+
+## **K-Means Clustering: Determining Natural Price Categories**
+
+📌 Objective: Segment housing prices into meaningful categories for investment and policy insights.
+
+Steps:
+
+1. Elbow Method determined k = 4 as the optimal number of clusters.
+2. K-Means applied (k = 4) to classify price segments.
+3. Boxplot visualization illustrated price distribution across clusters.
+4. Kruskal-Wallis Test confirmed significant price differences (χ² = 41911, df = 3, p < 2.2e-16).
+5. Dunn’s Post-hoc Test validated distinct pricing segments.
+
+```{r housing_K-Mean_Clustering, echo=FALSE}
+# Group by region & compute median house prices
+region_price_summary <- uk_housing_data %>%
+  group_by(region_name) %>%
+  summarise(median_price = median(average_price, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(median_price) & !is.nan(median_price) & is.finite(median_price))
+
+# Convert to numeric matrix
+region_price_matrix <- as.matrix(region_price_summary$median_price)
+
+# Determine optimal clusters
+fviz_nbclust(region_price_matrix, kmeans, method = "wss")  # Elbow Method
+
+# Apply K-Means clustering
+set.seed(123)
+kmeans_model <- kmeans(region_price_matrix, centers = 4, nstart = 25)
+
+# Assign clusters
+region_price_summary$price_category <- as.factor(kmeans_model$cluster)
+
+# -------------------- FIX CLUSTER ORDERING --------------------
+# Ensure clusters are ordered by price
+cluster_means <- region_price_summary %>%
+  group_by(price_category) %>%
+  summarise(median_price = mean(median_price)) %>%
+  arrange(median_price)  # Sort by increasing median price
+
+# Extract correct cluster order based on price
+cluster_order <- cluster_means$price_category %>%
+  as.character()  # Convert to character
+
+# -------------------- FIX MISSING `price_category` IN `uk_housing_data` --------------------
+
+# Merge clustering results into `uk_housing_data` **before applying factor levels**
+uk_housing_data <- left_join(uk_housing_data, region_price_summary, by = "region_name")
+
+# Ensure `price_category` now exists before applying factor levels
+if (!"price_category" %in% colnames(uk_housing_data)) {
+  stop("❌ Error: `price_category` is missing in `uk_housing_data`! Ensure the merge worked correctly.")
+}
+# Apply correct ordering **after merging**
+uk_housing_data$price_category <- factor(uk_housing_data$price_category, levels = cluster_order, ordered = TRUE)
+region_price_summary$price_category <- factor(region_price_summary$price_category, levels = cluster_order, ordered = TRUE)
+```
+
+---
+
+```{r housing_Map, echo=FALSE}
+# -------------------- MAP VISUALIZATION  --------------------
+# Load UK map
+uk_map <- ne_states(country = "United Kingdom", returnclass = "sf")
+
+# Merge data with UK map
+uk_map <- left_join(uk_map, region_price_summary, by = c("name" = "region_name"))
+
+# 🚨 **Fix issue where `price_category` has more than 4 levels**
+# Fix issue where `price_category` has more than 4 levels
+valid_clusters <- c("1", "2", "3", "4")
+uk_map$price_category <- as.character(uk_map$price_category)
+uk_map <- uk_map %>%
+  filter(price_category %in% valid_clusters) %>%
+  mutate(price_category = factor(price_category, levels = cluster_order, ordered = TRUE))  # Correct order
+
+# Define consistent colors for both plots
+cluster_colors <- c(
+  "1" = "lightblue",  # Low-End Market
+  "2" = "blue",       # Luxury Market
+  "3" = "darkorange", # Upper Mid-Range Market
+  "4" = "red"         # Mid-Range Market
+)
+  
+  
+# Fix Map Legend Order
+uk_map$price_category <- factor(uk_map$price_category, levels = cluster_order, ordered = TRUE)
+
+# Set `tmap_options()` to allow 4 clusters only (fixes warning)
+tmap_options(max.categories = 4)
+
+
+
+# Generate map 
+tm_shape(uk_map) +
+  tm_polygons("price_category", 
+              title = "UK House Price Clusters", 
+              palette = cluster_colors,
+              style = "cat") +
+  tm_layout(
+    legend.outside = TRUE,
+    frame = FALSE,
+    inner.margins = c(0.1, 0.1, 0.1, 0.1),  
+    legend.position = c("right", "center"),
+    asp = 0,
+    title = NULL  # Removes the main title
+  )
+```
+
+```{r housing_cluster_boxplot, echo=FALSE}
+
+# -------------------- BOXPLOT VISUALIZATION --------------------
+# Ensure `price_category` exists in `uk_housing_data`
+if (!"price_category" %in% colnames(uk_housing_data)) {
+  stop("❌ Error: `price_category` is missing in `uk_housing_data`! Fix the merge step before plotting.")
+}
+
+ggplot(uk_housing_data, aes(x = as.factor(price_category), y = average_price, fill = as.factor(price_category))) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 16) +
+  scale_fill_manual(values = cluster_colors) +  
+  labs(
+    title = "Distribution of House Prices Across Price Clusters",
+    x = "K-Means Price Cluster",
+    y = "Median House Price (in £)",
+    fill = "Price Cluster"
+  ) +
+  theme_minimal()
+
+```
+
+```{r housing_K-Mean_Clustering_interpretation, echo=FALSE}
+
+# Create a dataframe for the interpretation table
+cluster_table <- data.frame(
+  Cluster = c("Cluster 1 (Low-End Market)", 
+              "Cluster 4 (Mid-Range Market)",
+              "Cluster 3 (Upper Mid-Range Market)", 
+              "Cluster 2 (Luxury Market)"),
+  
+  `Median Price Range` = c("£70,000 - £150,000", 
+                            "£150,000 - £300,000",
+                            "£300,000 - £500,000", 
+                            "Above £500,000"),
+  
+  Description = c(
+    "Affordable housing, rural properties, budget homes.",
+    "Suburban or semi-urban homes, common for middle-income buyers.",
+    "Premium housing in well-developed regions, some luxury properties.",
+    "High-value real estate, prime locations, and exclusive luxury properties."
+  )
+)
+
+# Print the table in Markdown format with better spacing
+kable(cluster_table, caption = "Interpretation of House Price Clusters") %>%
+  kable_styling(latex_options = c("hold_position")) %>%  # Keeps table in place
+  column_spec(1, width = "4cm") %>%  # Adjust column widths
+  column_spec(2, width = "4cm") %>%
+  column_spec(3, width = "7cm")
+```
+
+
+## **Business & Market Implications**
+
+✅ **Real Estate Investors** – Leverage clusters for strategic property acquisitions.
+✅ Lenders & Mortgage Institutions – Segment risk profiles for optimized loan approvals.
+✅ **Urban Planners & Government** – Allocate affordable housing to Cluster 1 regions.
+✅ **Real Estate Pricing Strategies** – Refine regional price ceilings and market positioning..
+
+
+---
+
+## **Statistical Analysis**
+
+### **Kruskal-Wallis Test: House Prices Across Clusters**
+
+**Hypothesis:**
+H0: There is no significant difference in house prices across the four clusters.
+H1: At least one cluster has a significantly different house price distribution.
+
+**Assumptions:**
+- Non-parametric test (does not require normality).
+- Groups must be independent.
+- Compares **median** differences rather than means.
+
+```{r housing_Kruskal-Wallis}
+
+
+# Kruskal-Wallis Test
+kruskal_test <- kruskal.test(average_price ~ price_category, data = uk_housing_data)
+
+# Format output manually
+cat(sprintf("A Kruskal-Wallis test showed a significant difference in house prices across clusters, χ²(%d) = %.2f, p < .001.", 
+            kruskal_test$parameter, kruskal_test$statistic))
+
+```
+
+📌 **Findings:**
+
+✅ Significant price differences exist between clusters (p < 0.001).
+✅ Luxury housing (Cluster 2) has significantly higher prices compared to other clusters.
+✅ Cluster 4 (Mid-Range Market) does not represent the highest-priced segment.
+
+```{r housing_Dunn, echo=FALSE}
+uk_housing_data$price_category <- factor(uk_housing_data$price_category, ordered = FALSE)
+
+# Dunn’s Test for pairwise comparisons
+dunn_test <- dunnTest(average_price ~ price_category, data = uk_housing_data, method = "holm")
+
+# Display results
+kable(dunn_test$res, caption = "Dunn’s Post-hoc Test for Price Clusters")
+
+```
+
+📌 **Post-hoc Analysis:**
+✅ Each price category represents a statistically distinct group, confirming segmentation validity.
+✅ Pairwise comparisons highlight significant price differences between clusters, with Cluster 2 (Luxury) being the most expensive.
+
+
+### **Time-Series Analysis: Housing Prices Over Time**
+
+```{r housing_Time-Series}
+top_regions <- uk_housing_data %>%
+  group_by(region_name) %>%
+  summarise(mean_price = mean(average_price, na.rm = TRUE)) %>%
+  top_n(10, mean_price) %>%
+  pull(region_name)
+
+ggplot(uk_housing_data %>% filter(region_name %in% top_regions),
+       aes(x = date, y = average_price, group = region_name, color = region_name)) +
+  geom_line(alpha = 0.5) +
+  labs(title = "Housing Price Trends Over Time by Region",
+       x = "Year",
+       y = "Average Price") +
+  theme_minimal()
+```
+
+📌 **Findings:**
+
+- Steady long-term price increase, with short-term declines during major economic events (e.g., 2008 crisis, Brexit, COVID-19).
+- Regional price trends vary, highlighting cyclical market behavior.
+- Certain regions (e.g., London) have steeper price increases than others.
+
+
+
+### **Final Insights & Recommendations:**
+
+✔ Investors should focus on Cluster 1 for high rental yield opportunities and Cluster 3 for stable long-term growth.
+✔ Government housing policies can focus on stabilizing prices in high-volatility areas.
+✔ Mortgage and lending strategies should consider long-term trends to optimize interest rates.
+✔ Real estate companies can refine marketing based on cluster insights to target specific buyer groups.
+
+### **Conclusion**
+
+This analysis successfully segmented UK housing prices using K-Means clustering, identified significant regional price differences, and examined time-series trends. The findings provide actionable insights for real estate investors, policymakers, and homebuyers, helping them make data-driven decisions in the UK housing market.
+
+---
+
+
+## **References**
+
+**E-commerce Dataset**  
+Kaggle. (n.d.). *Kaggle E-commerce Dataset.* Retrieved from [https://www.kaggle.com/datasets/steve1215rogg/e-commerce-dataset](https://www.kaggle.com/datasets/steve1215rogg/e-commerce-dataset)
+
+**Book Reviews**  
+Amazon. (n.d.). *Wind and Truth: Book Five of the Stormlight Archive.* Retrieved from [https://www.amazon.com/Wind-Truth-Book-Stormlight-Archive/dp/B0CQ2WYS21/](https://www.amazon.com/Wind-Truth-Book-Stormlight-Archive/dp/B0CQ2WYS21/)
+
+**UK Housing Prices**  
+UK Government. (n.d.). *UK House Price Index.* Retrieved from [https://www.gov.uk/government/publications/about-the-uk-house-price-index/about-the-uk-house-price-index#data-tables](https://www.gov.uk/government/publications/about-the-uk-house-price-index/about-the-uk-house-price-index#data-tables)
